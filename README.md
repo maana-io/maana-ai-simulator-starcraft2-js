@@ -1,1 +1,1 @@
-# maana-ai-simulator-starcraft2
+# maana-q-scalars

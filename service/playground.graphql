@@ -1,0 +1,24 @@
+fragment GameStatusFields on GameStatus {
+  id
+  status
+  errors
+  gameLoop
+}
+
+query gameStatus {
+  gameStatus(id: 0) {
+    ...GameStatusFields
+  }
+}
+
+mutation run {
+  run(config: { id: 0 }) {
+    ...GameStatusFields
+  }
+}
+
+mutation stop {
+  stop(id: 0) {
+    ...GameStatusFields
+  }
+}

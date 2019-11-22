@@ -1,0 +1,47 @@
+# Scalars
+scalar Date
+scalar JSON
+
+# Boilerplate
+type Info {
+  id: ID!
+  name: String!
+  description: String
+}
+
+enum Race {
+  Protoss
+  Zerg
+}
+
+input PlayerInput {
+  race: Race
+}
+
+input ConfigInput {
+  id: ID
+}
+
+type GameStatus {
+  id: ID!
+  status: Int!
+  errors: [String!]!
+  gameLoop: Int
+}
+
+type Observation {
+  gameStatus: GameStatus!
+}
+
+type Query {
+  gameStatus(id: ID!): GameStatus!
+}
+
+type Mutation {
+  run(config: ConfigInput!): GameStatus!
+  stop(id: ID!): GameStatus!
+}
+
+type Subscription {
+  onObservation(id: ID!): Observation!
+}
