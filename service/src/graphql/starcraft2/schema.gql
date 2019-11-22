@@ -35,6 +35,7 @@ type Observation {
 
 type Query {
   gameStatus(id: ID!): GameStatus!
+  observe(id: ID!): Observation!
 }
 
 type Mutation {

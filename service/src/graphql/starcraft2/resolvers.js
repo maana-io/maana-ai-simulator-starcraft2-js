@@ -144,11 +144,17 @@ const gameStatus = async ({ id }) => {
   return extractGameStatus(state)
 }
 
+const observe = async ({ id }) => {
+  const state = getGameState({ id })
+  return { gameStatus: extractGameStatus(state) }
+}
+
 // --- GraphQL resolvers
 
 const resolver = {
   Query: {
-    gameStatus: async (_, { id }) => gameStatus({ id })
+    gameStatus: async (_, { id }) => gameStatus({ id }),
+    observe: async (_, { id }) => observe({ id })
   },
   Mutation: {
     run: async (_, { config }) => run({ config }),
