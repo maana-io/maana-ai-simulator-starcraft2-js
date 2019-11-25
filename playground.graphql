@@ -1,40 +1,48 @@
-fragment SimStatusFields on SimStatus {
+fragment StatusFields on Status {
   id
-  code
+  code {
+    id
+  }
   errors
 }
 
-query listMaps {
-  listMaps {
+query ListEnvironments {
+  listEnvironments {
     id
   }
 }
 
-query simStatus {
-  simStatus {
-    ...SimStatusFields
+query Status {
+  status {
+    ...StatusFields
   }
 }
 
-query observe {
+query Observe {
   observe {
     step
     data
-    reward
-    simStatus {
-      ...SimStatusFields
+    rewards
+    status {
+      ...StatusFields
     }
   }
 }
 
-mutation run {
-  run(config: { map: "", mode: Training, players: [] }) {
-    ...SimStatusFields
+mutation Run {
+  run(
+    config: {
+      environment: "Ladder2019Season3/AcropolisLE.SC2Map"
+      mode: "Training"
+      bots: []
+    }
+  ) {
+    ...StatusFields
   }
 }
 
-mutation stop {
+mutation Stop {
   stop {
-    ...SimStatusFields
+    ...StatusFields
   }
 }

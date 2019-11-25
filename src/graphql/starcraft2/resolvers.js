@@ -1,55 +1,75 @@
 // --- External imports
 
-// --- Internal imports
-// const { createClient } = require('../../../GraphQLClient')
 import { Codes } from './enums'
 require('dotenv').config()
 const {
   createAgent,
   createEngine,
   createPlayer,
-  taskFunctions,
+  // taskFunctions,
   listMaps
 } = require('@node-sc2/core')
 const { Difficulty, Race, Status } = require('@node-sc2/core/constants/enums')
 
-// --- Game state management
-let gameState = null
+// --- Internal imports
+const { createGraphQLClient } = require('../../createGraphQLClient')
 
-const extractSimStatus = gameState => ({
-  id: `sc2@${new Date().toLocaleString()}`,
-  code: gameState.status,
-  errors: gameState.errors
+// --- Simulation state management
+let globalSimState = null
+
+const newSimState = () => ({
+  config: null,
+  engine: null,
+  status: newStatus()
 })
 
-const newGameState = () => ({
-  status: {
-    id: '',
-    code: Codes.Idle,
-    errors: []
-  }
-})
-
-const getGameState = () => {
-  let state = gameState
+const getSimState = () => {
+  let state = globalSimState
   if (!state) {
-    state = newGameState()
-    setGameState({ state })
+    state = newSimState()
+    setSimState({ state })
   }
   return state
 }
 
-const setGameState = ({ state }) => {
-  gameState = state
+const setSimState = ({ state }) => {
+  globalSimState = state
   return state
 }
 
-const resetGameState = () => setGameState({ state: null })
+const resetSimState = () => setSimState({ state: newSimState() })
+
+// Safely extract last status from state
+const newStatus = () => ({
+  id: new Date().toLocaleString(),
+  code: Codes.Unknown,
+  errors: []
+})
+
+const getStatus = () => {
+  const state = getSimState()
+  let status = state.status
+  if (!status) {
+    status = setStatus(newStatus())
+  }
+  return status
+}
+
+// Construct a status object
+const setStatus = status => {
+  const validStatus = {
+    ...newStatus(),
+    ...status
+  }
+  const state = getSimState()
+  state.status = validStatus
+  return validStatus
+}
 
 // --- StarCraft
 
-const getGameEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
-  const state = getGameState()
+const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
+  const state = getSimState()
   let engine = state.engine
   if (!engine) {
     console.log('Creating engine...')
@@ -60,53 +80,65 @@ const getGameEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
   return engine
 }
 
-const newBot = ({ agent, uri, token }) => {
-  const client = null // createClient({ uri, token })
-  return { agent, uri, token, client }
+const newBotClient = ({ uri, token }) => createGraphQLClient({ uri, token })
+
+const newAgent = bot => {
+  const botClient = newBotClient(bot)
+  const agent = createAgent({
+    async onGameStart({ resources }) {
+      // const { units, actions, map, frame } = resources.get()
+      console.log('onGameStarted')
+      setStatus({ code: Codes.Running })
+      // botClient.query()
+    },
+
+    async onStep({ agent, resources }) {
+      // const { units, actions, map, frame } = resources.get()
+      // const { gameLoop } = frame.getObservation()
+
+      // const state = getGameState({ id })
+      // if (state.status === Status.IN_GAME) {
+      console.log('onStep', agent)
+      //   state.gameLoop = gameLoop
+      //   const { client } = state.bot1
+      //   const x = await client.query({ query: GET_INFO })
+      //   console.log('res', x)
+      // } else {
+      //   console.log('onStep --- STOPPING')
+      // }
+    }
+    // botClient.query()
+  })
+
+  return agent
+}
+
+const getObservation = () => {
+  const state = getSimState()
+  let observation = state.observation
+  if (!observation) {
+    observation = setObservation({ step: 0, data: [], rewards: [] })
+  }
+  return observation
+}
+
+const setObservation = observation => {
+  const state = getSimState()
+  state.observation = observation
+  return observation
 }
 
 const run = async ({ config }) => {
   console.log('Running StarCraft II simulation...', config)
 
-  const id = config.id || 0
-  const uri =
-    config.uri ||
-    'https://lastknowngood.knowledge.maana.io:8443/service/b00a2def-69a1-4238-80f7-c7920aa0afd4/graphql'
-  const token = config.token || ''
+  const state = resetSimState()
+  state.config = config
 
-  const state = resetGameState()
+  const { environment, mode, bots } = config
 
-  const agent = createAgent({
-    async onGameStart({ resources }) {
-      const { units, actions, map, frame } = resources.get()
-      console.log('onGameStarted')
-      const state = getGameState({ id })
-      state.status = Status.IN_GAME
-      // console.log("onGameStarted", frame.getObservation());
-    },
+  state.agents = bots.map(newAgent)
 
-    async onStep({ agent, resources }) {
-      const { units, actions, map, frame } = resources.get()
-      const { gameLoop } = frame.getObservation()
-
-      const state = getGameState({ id })
-      if (state.status === Status.IN_GAME) {
-        console.log('onStep', gameLoop)
-        state.gameLoop = gameLoop
-        const { client } = state.bot1
-        const x = await client.query({ query: GET_INFO })
-        console.log('res', x)
-      } else {
-        console.log('onStep --- STOPPING')
-      }
-
-      // return new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  })
-
-  state.bot1 = newBot({ agent, uri, token })
-
-  const engine = getGameEngine({
+  const engine = getEngine({
     host: '127.0.0.1',
     port: '5000'
   })
@@ -117,52 +149,48 @@ const run = async ({ config }) => {
     state.connection = await engine.connect()
     console.log('... connected: ', state.connection)
 
-    state.status = Status.INIT_GAME
+    setStatus({ code: Codes.Idle })
+
+    const map = 'Ladder2019Season3/AcropolisLE.SC2Map'
+    // const map = environment.id
 
     state.runGame = engine
-      .runGame('Ladder2019Season3/AcropolisLE.SC2Map', [
+      .runGame(map, [
         createPlayer({ race: Race.RANDOM }, state.bot1.agent),
         createPlayer({ race: Race.RANDOM, difficulty: Difficulty.MEDIUM })
       ])
       .then(rg => {
         console.log('runGame complete', rg)
-        const state = getGameState({ id })
-        state.status = Status.ENDED
+        setStatus({ code: Codes.Ended })
       })
   } catch (e) {
-    state.status = Status.QUIT
-    state.errors = [JSON.stringify(e)]
+    setStatus({ code: Codes.Error, errors: [JSON.stringify(e)] })
   }
-  return extractSimStatus(state)
+  return getStatus()
 }
 
-const stop = async ({ id }) => {
-  const state = getGameState({ id })
-  state.status = Status.QUIT
-  return extractSimStatus(state)
-}
+const stop = () => setStatus({ code: Codes.Stopped })
 
-const simStatus = async ({ id }) => {
-  const state = getGameState({ id })
-  return extractSimStatus(state)
-}
-
-const observe = async ({ id }) => {
-  const state = getGameState({ id })
-  return { gameStatus: extractSimStatus(state) }
+const transformStatus = status => {
+  const status1 = { ...status, code: { id: status.code } }
+  console.log(status, status1)
+  return status1
 }
 
 // --- GraphQL resolvers
 
 const resolver = {
   Query: {
-    listMaps: async () => (await listMaps()).map(id => ({ id })),
-    simStatus: async (_, { id }) => simStatus({ id }),
-    observe: async (_, { id }) => observe({ id })
+    listEnvironments: async () => (await listMaps()).map(id => ({ id })),
+    status: async () => transformStatus(getStatus()),
+    observe: async () => ({
+      ...getObservation(),
+      status: transformStatus(getStatus())
+    })
   },
   Mutation: {
-    run: async (_, { config }) => run({ config }),
-    stop: async (_, { id }) => stop({ id })
+    run: async (_, { config }) => transformStatus(await run({ config })),
+    stop: async () => transformStatus(stop())
   }
 }
 

@@ -9,37 +9,71 @@ type Info {
   description: String
 }
 
-enum StatusCode {
-  Idle
-  Starting
-  Running
-  Stopped
-  Ended
-  Error
-}
-
-enum Mode {
-  Training
-  Performing
-}
-
-input PlayerInput {
-  race: Int
-  url: String
-  token: String
-}
-
-input ConfigInput {
-  map: ID!
-  mode: Mode!
-  players: [PlayerInput!]!
-}
-
-type Map {
+# Unkown
+# Idle
+# Starting
+# Running
+# Stopped
+# Ended
+# Error
+type StatusCode {
   id: ID!
 }
 
-type SimStatus {
+# Training
+# Performing
+type Mode {
+  id: ID!
+}
+
+input BotInput {
+  type: String
+  url: String
+  token: String
+  features: [Float!]
+}
+
+type Bot {
+  type: String
+  url: String
+  token: String
+  features: [Float!]
+}
+
+input ConfigInput {
+  environment: ID!
+  mode: ID!
+  bots: [BotInput!]!
+}
+
+type Config {
+  environment: Environment!
+  mode: Mode!
+  bots: [Bot!]!
+}
+
+type Environment {
+  id: ID!
+  name: String
+  observationSpace: FeatureSpace
+  actionSpace: FeatureSpace
+  rewardSpace: FeatureSpace
+}
+
+type Dimension {
+  id: ID!
+  isContinuous: Boolean
+  rangeMin: Float
+  rangeMax: Float
+}
+
+type FeatureSpace {
+  id: ID!
+  name: String
+  dimensions: [Dimension]
+}
+
+type Status {
   id: ID!
   code: StatusCode!
   errors: [String!]!
@@ -48,17 +82,18 @@ type SimStatus {
 type Observation {
   step: Int!
   data: [Float!]!
-  reward: Float!
-  simStatus: SimStatus!
+  rewards: [Float!]!
+  status: Status!
 }
 
 type Query {
-  listMaps: [Map!]!
-  simStatus: SimStatus!
+  listEnvironments: [Environment!]!
+  configuration: Config!
+  status: Status!
   observe: Observation!
 }
 
 type Mutation {
-  run(config: ConfigInput!): SimStatus!
-  stop: SimStatus!
+  run(config: ConfigInput!): Status!
+  stop: Status!
 }
