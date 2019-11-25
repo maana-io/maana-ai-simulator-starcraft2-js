@@ -9,40 +9,56 @@ type Info {
   description: String
 }
 
-enum Race {
-  Protoss
-  Zerg
+enum StatusCode {
+  Idle
+  Starting
+  Running
+  Stopped
+  Ended
+  Error
+}
+
+enum Mode {
+  Training
+  Performing
 }
 
 input PlayerInput {
-  race: Race
+  race: Int
+  url: String
+  token: String
 }
 
 input ConfigInput {
-  id: ID
+  map: ID!
+  mode: Mode!
+  players: [PlayerInput!]!
 }
 
-type GameStatus {
+type Map {
   id: ID!
-  status: Int!
+}
+
+type SimStatus {
+  id: ID!
+  code: StatusCode!
   errors: [String!]!
-  gameLoop: Int
 }
 
 type Observation {
-  gameStatus: GameStatus!
+  step: Int!
+  data: [Float!]!
+  reward: Float!
+  simStatus: SimStatus!
 }
 
 type Query {
-  gameStatus(id: ID!): GameStatus!
-  observe(id: ID!): Observation!
+  listMaps: [Map!]!
+  simStatus: SimStatus!
+  observe: Observation!
 }
 
 type Mutation {
-  run(config: ConfigInput!): GameStatus!
-  stop(id: ID!): GameStatus!
-}
-
-type Subscription {
-  onObservation(id: ID!): Observation!
+  run(config: ConfigInput!): SimStatus!
+  stop: SimStatus!
 }

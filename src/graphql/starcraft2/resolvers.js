@@ -1,48 +1,49 @@
 // --- External imports
-require('dotenv').config()
-const { createAgent, createEngine, createPlayer } = require('@node-sc2/core')
-const { Difficulty, Race, Status } = require('@node-sc2/core/constants/enums')
-const gql = require('graphql-tag')
 import uuid from 'uuid'
 import { log, print } from 'io.maana.shared'
 
 // --- Internal imports
 // const { createClient } = require('../../../GraphQLClient')
 import pubsub from '../../pubsub'
+import { Codes } from './enums'
+require('dotenv').config()
+const { createAgent, createEngine, createPlayer } = require('@node-sc2/core')
+const { Difficulty, Race, Status } = require('@node-sc2/core/constants/enums')
+const gql = require('graphql-tag')
 
 const SELF = process.env.SERVICE_ID || 'io.maana.template'
 
 // --- Implementation
 
 // Game state management
-const gameState = {}
+let gameState = null
 
-const extractGameStatus = gameState => ({
-  id: gameState.id,
-  status: gameState.status,
-  errors: gameState.errors,
-  gameLoop: gameState.gameLoop
+const extractSimStatus = gameState => ({
+  id: `sc2@${new Date().toLocaleString()}`,
+  code: gameState.status,
+  errors: gameState.errors
 })
 
-const newGameState = ({ id }) => ({
-  id,
-  status: Status.UNKNOWN,
-  gameLoop: 0,
-  errors: []
+const newGameState = () => ({
+  status: {
+    id: '',
+    code: Codes.Idle,
+    errors: []
+  }
 })
 
-const getGameState = ({ id }) => {
-  let state = gameState[id]
+const getGameState = () => {
+  let state = gameState
   if (!state) {
-    state = newGameState({ id })
+    state = newGameState()
     setGameState({ state })
   }
   return state
 }
 
-const setGameState = ({ state }) => (gameState[state.id] = state)
+const setGameState = ({ state }) => (gameState = state)
 
-const resetGameState = ({ id }) => delete gameState[id]
+const resetGameState = () => setGameState({ state: null })
 
 const GET_INFO = gql`
   query getInfo {
@@ -60,7 +61,7 @@ const newBot = ({ agent, uri, token }) => {
 }
 
 const run = async ({ config }) => {
-  console.log('Running StarCraft II s  imulation...')
+  console.log('Running StarCraft II simulation...', config)
 
   const id = config.id || 0
   const uri =
@@ -130,30 +131,31 @@ const run = async ({ config }) => {
     state.status = Status.QUIT
     state.errors = [JSON.stringify(e)]
   }
-  return extractGameStatus(state)
+  return extractSimStatus(state)
 }
 
 const stop = async ({ id }) => {
   const state = getGameState({ id })
   state.status = Status.QUIT
-  return extractGameStatus(state)
+  return extractSimStatus(state)
 }
 
-const gameStatus = async ({ id }) => {
+const simStatus = async ({ id }) => {
   const state = getGameState({ id })
-  return extractGameStatus(state)
+  return extractSimStatus(state)
 }
 
 const observe = async ({ id }) => {
   const state = getGameState({ id })
-  return { gameStatus: extractGameStatus(state) }
+  return { gameStatus: extractSimStatus(state) }
 }
 
 // --- GraphQL resolvers
 
 const resolver = {
   Query: {
-    gameStatus: async (_, { id }) => gameStatus({ id }),
+    listMaps: async () => [],
+    simStatus: async (_, { id }) => simStatus({ id }),
     observe: async (_, { id }) => observe({ id })
   },
   Mutation: {
