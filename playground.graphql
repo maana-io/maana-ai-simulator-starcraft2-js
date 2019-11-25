@@ -1,32 +1,40 @@
-fragment GameStatusFields on GameStatus {
+fragment SimStatusFields on SimStatus {
   id
-  status
+  code
   errors
-  gameLoop
 }
 
-query gameStatus {
-  gameStatus(id: 0) {
-    ...GameStatusFields
+query listMaps {
+  listMaps {
+    id
+  }
+}
+
+query simStatus {
+  simStatus {
+    ...SimStatusFields
   }
 }
 
 query observe {
-  observe(id: 0) {
-    gameStatus: {
-      ...GameStatusFields
+  observe {
+    step
+    data
+    reward
+    simStatus {
+      ...SimStatusFields
     }
   }
 }
 
 mutation run {
-  run(config: { id: 0 }) {
-    ...GameStatusFields
+  run(config: { map: "", mode: Training, players: [] }) {
+    ...SimStatusFields
   }
 }
 
 mutation stop {
-  stop(id: 0) {
-    ...GameStatusFields
+  stop {
+    ...SimStatusFields
   }
 }

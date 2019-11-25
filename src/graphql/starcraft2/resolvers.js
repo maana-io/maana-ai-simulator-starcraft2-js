@@ -1,21 +1,19 @@
 // --- External imports
-import uuid from 'uuid'
-import { log, print } from 'io.maana.shared'
 
 // --- Internal imports
 // const { createClient } = require('../../../GraphQLClient')
-import pubsub from '../../pubsub'
 import { Codes } from './enums'
 require('dotenv').config()
-const { createAgent, createEngine, createPlayer } = require('@node-sc2/core')
+const {
+  createAgent,
+  createEngine,
+  createPlayer,
+  taskFunctions,
+  listMaps
+} = require('@node-sc2/core')
 const { Difficulty, Race, Status } = require('@node-sc2/core/constants/enums')
-const gql = require('graphql-tag')
 
-const SELF = process.env.SERVICE_ID || 'io.maana.template'
-
-// --- Implementation
-
-// Game state management
+// --- Game state management
 let gameState = null
 
 const extractSimStatus = gameState => ({
@@ -41,19 +39,26 @@ const getGameState = () => {
   return state
 }
 
-const setGameState = ({ state }) => (gameState = state)
+const setGameState = ({ state }) => {
+  gameState = state
+  return state
+}
 
 const resetGameState = () => setGameState({ state: null })
 
-const GET_INFO = gql`
-  query getInfo {
-    info {
-      id
-      name
-      description
-    }
+// --- StarCraft
+
+const getGameEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
+  const state = getGameState()
+  let engine = state.engine
+  if (!engine) {
+    console.log('Creating engine...')
+    engine = createEngine({ host, port })
+    console.log('... done!')
+    state.engine = engine
   }
-`
+  return engine
+}
 
 const newBot = ({ agent, uri, token }) => {
   const client = null // createClient({ uri, token })
@@ -69,8 +74,7 @@ const run = async ({ config }) => {
     'https://lastknowngood.knowledge.maana.io:8443/service/b00a2def-69a1-4238-80f7-c7920aa0afd4/graphql'
   const token = config.token || ''
 
-  resetGameState({ id })
-  const state = getGameState({ id })
+  const state = resetGameState()
 
   const agent = createAgent({
     async onGameStart({ resources }) {
@@ -102,12 +106,10 @@ const run = async ({ config }) => {
 
   state.bot1 = newBot({ agent, uri, token })
 
-  console.log('Creating engine...')
-  const engine = createEngine({
+  const engine = getGameEngine({
     host: '127.0.0.1',
     port: '5000'
   })
-  state.engine = engine
 
   try {
     console.log('Connecting...')
@@ -154,7 +156,7 @@ const observe = async ({ id }) => {
 
 const resolver = {
   Query: {
-    listMaps: async () => [],
+    listMaps: async () => (await listMaps()).map(id => ({ id })),
     simStatus: async (_, { id }) => simStatus({ id }),
     observe: async (_, { id }) => observe({ id })
   },

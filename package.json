@@ -22,7 +22,7 @@
     ]
   },
   "dependencies": {
-    "@node-sc2/core": "^0.8.2",
+    "@node-sc2/core": "git+https://github.com/maana-io/core.git",
     "@node-sc2/proto": "^0.5.7",
     "amqplib": "^0.5.5",
     "apollo-cache-inmemory": "^1.6.3",
