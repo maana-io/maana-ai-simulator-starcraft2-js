@@ -27,14 +27,14 @@ type Mode {
 }
 
 input AgentInput {
-  type: String
+  race: Int
   uri: String
   token: String
   features: [Float!]
 }
 
 type Agent {
-  type: String
+  race: Int
   uri: String
   token: String
   features: [Float!]

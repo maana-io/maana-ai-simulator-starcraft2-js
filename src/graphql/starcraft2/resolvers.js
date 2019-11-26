@@ -76,9 +76,9 @@ const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
   const state = getSimulationState()
   let engine = state.engine
   if (!engine) {
-    console.log('Creating engine...')
+    console.log('getEngine: creating engine...')
     engine = createEngine({ host, port })
-    console.log('... done!')
+    console.log('... engine:', state.engine)
     state.engine = engine
   }
   return engine
@@ -87,25 +87,27 @@ const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
 const newAgent = settings => {
   let client
   let agent
-  const { type: race, uri, token } = settings
+  const { race, uri, token } = settings
   if (validUrl.isUri(uri)) {
+    console.log('new agent', uri)
     client = createGraphQLClient({ uri, token })
 
     agent = createAgent({
       async onGameStart({ resources }) {
+        console.log('onGameStart', resources)
         // const { units, actions, map, frame } = resources.get()
-        console.log('onGameStart')
-        setStatusCode(Codes.Running)
         // agentClient.query(OnResetMutation, ...)
       },
 
       async onStep({ agent, resources }) {
+        console.log('onStep', agent, resources)
         // const { units, actions, map, frame } = resources.get()
         // const { gameLoop } = frame.getObservation()
 
-        // const state = getGameState({ id })
+        const state = getSimulationState()
+        state.step += 1
+
         // if (state.status === Status.IN_GAME) {
-        console.log('onStep', agent)
         //   state.gameLoop = gameLoop
         //   const { client } = state.bot1
         //   const x = await client.query({ query: GET_INFO })
@@ -156,7 +158,6 @@ const run = async ({ config }) => {
     state.config = config
 
     const { environmentId, modeId, agents } = config
-    // const map = 'Ladder2019Season3/AcropolisLE.SC2Map'
 
     state.agents = agents.map(newAgent)
     const validAgents = state.agents.find(a => !!a.client)
@@ -167,35 +168,47 @@ const run = async ({ config }) => {
       })
     }
 
-    const engine = getEngine({
+    console.log(state.agents[0].race)
+
+    console.log('Creating players...')
+    state.players = []
+    state.players[0] = createPlayer(
+      {
+        race: state.agents[0].race,
+        difficulty: Difficulty.MEDIUM
+      },
+      state.agents[0].agent
+    )
+    state.players[1] = createPlayer(
+      {
+        race: state.agents[1].race,
+        difficulty: Difficulty.MEDIUM
+      },
+      state.agents[1].agent
+    )
+    console.log('... players:', state.players)
+
+    state.engine = getEngine({
       host: '127.0.0.1',
       port: '5000'
     })
 
     console.log('Connecting...')
-
-    state.connection = await engine.connect()
+    state.connection = await state.engine.connect()
     console.log('... connected: ', state.connection)
 
     setStatusCode(Codes.Idle)
 
-    const map = environmentId
+    // const map = environmentId
+    const map = 'Ladder2019Season3/AcropolisLE.SC2Map'
 
-    state.runGame = engine
-      .runGame(map, [
-        createPlayer(
-          { race: state.agents[0].type, difficulty: Difficulty.MEDIUM },
-          state.agents[0].agent
-        ),
-        createPlayer({
-          race: state.agents[1].type,
-          difficulty: Difficulty.MEDIUM
-        })
-      ])
-      .then(rg => {
-        console.log('runGame complete', rg)
-        setStatusCode(Codes.Ended)
-      })
+    console.log('Running game...')
+    state.runGame = state.engine.runGame(map, state.players).then(rg => {
+      console.log('runGame complete', rg)
+      setStatusCode(Codes.Ended)
+    })
+    console.log('... runGame:', state.runGame)
+    setStatusCode(Codes.Running)
   } catch (e) {
     let err = e.toString()
     if (Object.keys(e).length) {
