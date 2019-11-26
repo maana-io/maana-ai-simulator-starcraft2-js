@@ -26,30 +26,32 @@ type Mode {
   id: ID!
 }
 
-input BotInput {
+input AgentInput {
   type: String
-  url: String
+  uri: String
   token: String
   features: [Float!]
 }
 
-type Bot {
+type Agent {
   type: String
-  url: String
+  uri: String
   token: String
   features: [Float!]
 }
 
 input ConfigInput {
-  environment: ID!
-  mode: ID!
-  bots: [BotInput!]!
+  episodes: Int
+  environmentId: ID!
+  modeId: ID
+  agents: [AgentInput!]!
 }
 
 type Config {
+  episodes: Int!
   environment: Environment!
   mode: Mode!
-  bots: [Bot!]!
+  agents: [Agent!]!
 }
 
 type Environment {
@@ -79,10 +81,18 @@ type Status {
   errors: [String!]!
 }
 
+type AgentStats {
+  lastReward: [Float!]!
+  lastAction: [Float!]!
+  totalReward: [Float!]!
+}
+
 type Observation {
+  episode: Int!
   step: Int!
+  mode: Mode
   data: [Float!]!
-  rewards: [Float!]!
+  agentStats: [AgentStats!]!
   status: Status!
 }
 

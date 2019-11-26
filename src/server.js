@@ -62,9 +62,9 @@ const corsOptions = {
 app.use(cors(corsOptions)) // enable all CORS requests
 app.options('*', cors()) // enable pre-flight for all routes
 
-app.get('/', (req, res) => {
-  res.send(`${SELF}\n`)
-})
+// app.get('/', (req, res) => {
+//   res.send(`${SELF}\n`)
+// })
 
 const defaultSocketMiddleware = (connectionParams, webSocket) => {
   return new Promise(function(resolve, reject) {
@@ -75,8 +75,8 @@ const defaultSocketMiddleware = (connectionParams, webSocket) => {
   })
 }
 
-initMetrics(SELF.replace(/[\W_]+/g, ''))
-const graphqlRequestCounter = counter('graphqlRequests', 'it counts')
+// initMetrics(SELF.replace(/[\W_]+/g, ''))
+// const graphqlRequestCounter = counter('graphqlRequests', 'it counts')
 
 const initServer = options => {
   const { httpAuthMiddleware, socketAuthMiddleware } = options
@@ -91,7 +91,8 @@ const initServer = options => {
   })
 
   server.applyMiddleware({
-    app
+    app,
+    path: '/'
   })
 
   const httpServer = http.createServer(app)

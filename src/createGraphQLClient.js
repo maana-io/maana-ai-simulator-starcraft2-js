@@ -12,7 +12,7 @@ import { getMainDefinition } from 'apollo-utilities'
 
 // --- Internal imports
 
-const createGraphQLClient = ({ uri, wsUri, token }) => {
+export default function createGraphQLClient({ uri, wsUri, token }) {
   // console.log("createGraphQLClient", uri, wsUri, token);
 
   const authLink = setContext((_, { headers }) => {
@@ -60,11 +60,9 @@ const createGraphQLClient = ({ uri, wsUri, token }) => {
   }
 
   const client = new ApolloClient({
-    link
-    // cache: new InMemoryCache().restore(window.__APOLLO_STATE__)
+    link,
+    cache: new InMemoryCache()
   })
 
   return client
 }
-
-export default createGraphQLClient

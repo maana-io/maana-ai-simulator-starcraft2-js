@@ -45,7 +45,8 @@
     "node-fetch": "^2.6.0",
     "schemaglue": "^4.0.4",
     "subscriptions-transport-ws": "^0.9.16",
-    "uuid": "^3.3.3"
+    "uuid": "^3.3.3",
+    "valid-url": "^1.0.9"
   },
   "devDependencies": {
     "@babel/cli": "^7.7.0",
