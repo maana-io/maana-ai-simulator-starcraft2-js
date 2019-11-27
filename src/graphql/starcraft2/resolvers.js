@@ -1,9 +1,11 @@
 // --- External imports
 import validUrl from 'valid-url'
+import gql from 'graphql-tag'
 
 // --- Internal imports
 import { Codes } from './enums'
 import createGraphQLClient from '../../createGraphQLClient'
+import { stat } from 'fs'
 
 require('dotenv').config()
 const {
@@ -15,12 +17,18 @@ const {
 } = require('@node-sc2/core')
 const { Difficulty, Race, Status } = require('@node-sc2/core/constants/enums')
 
+const serializeException = e =>
+  Object.keys(e).length ? JSON.stringify(e) : e.toString()
+
 // --- Simulation state management
 let simulationState = null
 
 const newSimulationState = () => ({
   config: null,
   engine: null,
+  episode: 0,
+  step: 0,
+  agents: [],
   status: newStatus()
 })
 
@@ -70,6 +78,11 @@ const setStatus = status => {
 
 const setStatusCode = code => setStatus({ code: { id: code } })
 
+const setError = error =>
+  setStatus({ code: { id: Codes.Error }, errors: [error] })
+
+const setException = exception => setError(serializeException(exception))
+
 // --- StarCraft
 
 const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
@@ -84,7 +97,52 @@ const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
   return engine
 }
 
-const newAgent = settings => {
+const sendOnStepMutation = async ({
+  client,
+  state,
+  lastReward,
+  lastAction,
+  isDone,
+  context
+}) => {
+  try {
+    const OnStepMutation = gql`
+      mutation onStep(
+        $state: [Float!]!
+        $lastReward: [Float!]!
+        $lastAction: [Float!]!
+        $isDone: Boolean!
+        $context: String
+      ) {
+        onStep(
+          state: $state
+          lastReward: $lastReward
+          lastAction: $lastAction
+          isDone: $isDone
+          context: $context
+        ) {
+          id
+          action
+          context
+        }
+      }
+    `
+
+    const res = await client.mutate({
+      mutation: OnStepMutation,
+      variables: { state, lastReward, lastAction, isDone, context }
+    })
+
+    if (res && res.data && res.data.onStep) {
+      return res.data.onStep
+    }
+  } catch (e) {
+    console.log('Exception onStep: ', JSON.stringify(e, null, 2))
+    setException(e)
+  }
+}
+
+const newAgent = ({ settings, index }) => {
   let client
   let agent
   const { race, uri, token } = settings
@@ -94,28 +152,60 @@ const newAgent = settings => {
 
     agent = createAgent({
       async onGameStart({ resources }) {
-        console.log('onGameStart', resources)
+        // console.log('onGameStart', resources)
+        setStatusCode(Codes.Running)
+
+        // Initialize game state for this agent
+        const state = getSimulationState()
+        const agentState = state.agents[index]
+
+        const stats = {
+          lastAction: [0.0],
+          lastReward: [0.0],
+          totalReward: [0.0]
+        }
+        agentState.stats = stats
+
         // const { units, actions, map, frame } = resources.get()
         // agentClient.query(OnResetMutation, ...)
+
+        agentState.context = null // result of call to Agent
       },
 
       async onStep({ agent, resources }) {
-        console.log('onStep', agent, resources)
-        // const { units, actions, map, frame } = resources.get()
-        // const { gameLoop } = frame.getObservation()
+        // console.log('onStep', agent, resources.get())
+        const { units, actions, map, frame } = resources.get()
 
         const state = getSimulationState()
-        state.step += 1
 
-        // if (state.status === Status.IN_GAME) {
-        //   state.gameLoop = gameLoop
-        //   const { client } = state.bot1
-        //   const x = await client.query({ query: GET_INFO })
-        //   console.log('res', x)
-        // } else {
-        //   console.log('onStep --- STOPPING')
-        // agentClient.query(OnStep, ...)
-        // }
+        const frameObservation = frame.getObservation()
+        // console.log('frameObservation', frameObservation)
+
+        state.step = frameObservation.gameLoop
+
+        const agentState = state.agents[index]
+        const { client, stats, context } = agentState
+        const { lastReward, lastAction } = stats
+
+        // ask the agent what action to take
+        const res = await sendOnStepMutation({
+          client,
+          state: [0.0], // TODO: game state
+          lastReward,
+          lastAction,
+          isDone: false,
+          context
+        })
+
+        // store the actions and updated context
+        stats.lastAction = res.action
+        agentState.context = res.context
+
+        // take action
+
+        // determine reward (if any)
+        stats.lastReward = [0.0]
+        stats.totalReward = [0.0]
       }
     })
   }
@@ -129,21 +219,15 @@ const newAgent = settings => {
 
 const getObservation = () => {
   const state = getSimulationState()
-  let observation = state.observation
-  if (!observation) {
-    observation = setObservation({
-      episode: 0,
-      step: 0,
-      data: [],
-      agentStats: []
-    })
-  }
-  return observation
-}
 
-const setObservation = observation => {
-  const state = getSimulationState()
-  state.observation = observation
+  const observation = {
+    episode: state.episode,
+    step: state.step,
+    data: [],
+    agentStats: state.agents.filter(x => !!x.stats).map(x => x.stats),
+    status: getStatus()
+  }
+  // console.log('getObservation', observation)
   return observation
 }
 
@@ -155,21 +239,25 @@ const run = async ({ config }) => {
     )
 
     const state = resetSimulationState()
+
+    setStatusCode(Codes.Starting)
+
     state.config = config
 
     const { environmentId, modeId, agents } = config
+    // const map = environmentId
+    const map = 'Ladder2019Season3/AcropolisLE.SC2Map'
 
-    state.agents = agents.map(newAgent)
+    // make agent proxies for each of the specified agent settings
+    state.agents = agents.map((settings, index) =>
+      newAgent({ settings, index })
+    )
     const validAgents = state.agents.find(a => !!a.client)
     if (!validAgents) {
-      setStatus({
-        code: { id: Codes.Error },
-        errors: ['Must have at least 1 valid agent URL']
-      })
+      setError('Must have at least 1 valid agent URL')
     }
 
-    console.log(state.agents[0].race)
-
+    // create game players, which can be agents or StarCraft's AI
     console.log('Creating players...')
     state.players = []
     state.players[0] = createPlayer(
@@ -188,6 +276,7 @@ const run = async ({ config }) => {
     )
     console.log('... players:', state.players)
 
+    // get an instance of the engine
     state.engine = getEngine({
       host: '127.0.0.1',
       port: '5000'
@@ -197,25 +286,14 @@ const run = async ({ config }) => {
     state.connection = await state.engine.connect()
     console.log('... connected: ', state.connection)
 
-    setStatusCode(Codes.Idle)
-
-    // const map = environmentId
-    const map = 'Ladder2019Season3/AcropolisLE.SC2Map'
-
     console.log('Running game...')
     state.runGame = state.engine.runGame(map, state.players).then(rg => {
       console.log('runGame complete', rg)
       setStatusCode(Codes.Ended)
     })
     console.log('... runGame:', state.runGame)
-    setStatusCode(Codes.Running)
   } catch (e) {
-    let err = e.toString()
-    if (Object.keys(e).length) {
-      err = JSON.stringify(e)
-    }
-    console.log('run exception: ', err)
-    setStatus({ code: { id: Codes.Error }, errors: [err] })
+    setException(e)
   }
   return getStatus()
 }
@@ -228,10 +306,7 @@ const resolver = {
   Query: {
     listEnvironments: async () => (await listMaps()).map(id => ({ id })),
     status: async () => getStatus(),
-    observe: async () => ({
-      ...getObservation(),
-      status: getStatus()
-    })
+    observe: async () => getObservation()
   },
   Mutation: {
     run: async (_, { config }) => run({ config }),
