@@ -1,11 +1,11 @@
 // --- External imports
 import validUrl from 'valid-url'
 import gql from 'graphql-tag'
+import { Ability } from '@node-sc2/core/constants'
 
 // --- Internal imports
 import { Codes } from './enums'
 import createGraphQLClient from '../../createGraphQLClient'
-import { stat } from 'fs'
 
 require('dotenv').config()
 const {
@@ -16,6 +16,8 @@ const {
   listMaps
 } = require('@node-sc2/core')
 const { Difficulty, Race, Status } = require('@node-sc2/core/constants/enums')
+
+const SERVICE_ID = 'maana-ai-simulator-starcraft2'
 
 const serializeException = e =>
   Object.keys(e).length ? JSON.stringify(e) : e.toString()
@@ -97,12 +99,41 @@ const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
   return engine
 }
 
+const agentSchema = gql`
+  type Ability {
+    id: ID!
+  }
+
+  type Point2D {
+    id: ID!
+    x: Float!
+    y: Float!
+  }
+
+  type ActionRawUnitCommand {
+    id: ID!
+    ability: Ability
+    targetWorldPos: Point2D
+    targetUnitTag: String
+    unitTag: [String!]
+    queueCommand: Boolean
+  }
+
+  input ActionRawUnitCommandInput {
+    abilityId: ID
+    ability: Ability
+    targetWorldPos: Point2D
+    targetUnitTag: String
+    unitTag: [String!]
+    queueCommand: Boolean
+  }
+`
 const sendOnStepMutation = async ({
   client,
   state,
   lastReward,
   lastAction,
-  isDone,
+  step,
   context
 }) => {
   try {
@@ -111,14 +142,14 @@ const sendOnStepMutation = async ({
         $state: [Float!]!
         $lastReward: [Float!]!
         $lastAction: [Float!]!
-        $isDone: Boolean!
+        $step: Int!
         $context: String
       ) {
         onStep(
           state: $state
           lastReward: $lastReward
           lastAction: $lastAction
-          isDone: $isDone
+          step: $step
           context: $context
         ) {
           id
@@ -130,7 +161,7 @@ const sendOnStepMutation = async ({
 
     const res = await client.mutate({
       mutation: OnStepMutation,
-      variables: { state, lastReward, lastAction, isDone, context }
+      variables: { state, lastReward, lastAction, step, context }
     })
 
     if (res && res.data && res.data.onStep) {
@@ -141,6 +172,8 @@ const sendOnStepMutation = async ({
     setException(e)
   }
 }
+
+const nastyPos = { x: 0, y: 0 }
 
 const newAgent = ({ settings, index }) => {
   let client
@@ -160,6 +193,7 @@ const newAgent = ({ settings, index }) => {
         const agentState = state.agents[index]
 
         const stats = {
+          score: 0.0,
           lastAction: [0.0],
           lastReward: [0.0],
           totalReward: [0.0]
@@ -173,39 +207,79 @@ const newAgent = ({ settings, index }) => {
       },
 
       async onStep({ agent, resources }) {
-        // console.log('onStep', agent, resources.get())
-        const { units, actions, map, frame } = resources.get()
+        try {
+          // console.log('onStep', agent, resources.get())
+          const { units, map, actions, frame, debug } = resources.get()
+          // units
+          //   .getAll()
+          //   .forEach(u =>
+          //     console.log(
+          //       `unit: type=${u.unitType} pos=${JSON.stringify(u.pos)}`
+          //     )
+          //   )
+          const idleCombatUnits = units.getCombatUnits().filter(u => u.noQueue)
 
-        const state = getSimulationState()
+          const state = getSimulationState()
 
-        const frameObservation = frame.getObservation()
-        // console.log('frameObservation', frameObservation)
+          const frameObservation = frame.getObservation()
+          // console.log('frameObservation', frameObservation)
 
-        state.step = frameObservation.gameLoop
+          state.step = frameObservation.gameLoop
 
-        const agentState = state.agents[index]
-        const { client, stats, context } = agentState
-        const { lastReward, lastAction } = stats
+          const agentState = state.agents[index]
+          const { client, stats, context } = agentState
+          const { lastReward, lastAction } = stats
 
-        // ask the agent what action to take
-        const res = await sendOnStepMutation({
-          client,
-          state: [0.0], // TODO: game state
-          lastReward,
-          lastAction,
-          isDone: false,
-          context
-        })
+          // ask the agent what action to take
+          const res = await sendOnStepMutation({
+            client,
+            state: [0.0], // TODO: game state
+            lastReward,
+            lastAction,
+            step: state.step,
+            context
+          })
+          console.log('on step mutation result', res)
+          if (res) {
+            // store the actions and updated context
+            stats.lastAction = res.action
+            agentState.context = res.context
 
-        // store the actions and updated context
-        stats.lastAction = res.action
-        agentState.context = res.context
+            // take action
+            // const units = Array.isArray(u) ? u : [u];
+            const queue = false
+            const targetPos = units.getByType(317)[0].pos
+            const moveTo = {
+              abilityId: Ability.MOVE,
+              unitTags: idleCombatUnits.map(u => u.tag),
+              targetWorldSpacePos: targetPos,
+              //     moveTo.targetUnitTag = posOrUnit.tag;
+              queueCommand: queue
+            }
+            const actionResult = await actions.sendAction(moveTo)
+            console.log('actionResult', actionResult)
+            // if (posOrUnit.tag) {
+            //     moveTo.targetUnitTag = posOrUnit.tag;
+            // } else if (posOrUnit.x) {
+            //     moveTo.targetWorldSpacePos = posOrUnit;
+            // }
 
-        // take action
+            // return this.sendAction(moveTo)
+            //     .then((res) => {
+            //         if (res.result[0] !== 1) {
+            //             throw new Error(`Could not move unit, result ${res.result[0]}`);
+            //         }
 
-        // determine reward (if any)
-        stats.lastReward = [0.0]
-        stats.totalReward = [0.0]
+            //         return res;
+            //     });
+
+            // determine reward (if any)
+            stats.lastReward = [0.0]
+            stats.totalReward = [0.0]
+          }
+        } catch (e) {
+          console.log('onstep exception: ', e)
+        }
       }
     })
   }
@@ -223,8 +297,10 @@ const getObservation = () => {
   const observation = {
     episode: state.episode,
     step: state.step,
+    mode: state.config ? { id: state.config.modeId } : null,
     data: [],
     agentStats: state.agents.filter(x => !!x.stats).map(x => x.stats),
+    render: '',
     status: getStatus()
   }
   // console.log('getObservation', observation)
@@ -246,7 +322,7 @@ const run = async ({ config }) => {
 
     const { environmentId, modeId, agents } = config
     // const map = environmentId
-    const map = 'Ladder2019Season3/AcropolisLE.SC2Map'
+    const map = 'mini_games/MoveToBeacon.SC2Map'
 
     // make agent proxies for each of the specified agent settings
     state.agents = agents.map((settings, index) =>
@@ -304,6 +380,7 @@ const stop = () => setStatusCode(Codes.Stopped)
 
 const resolver = {
   Query: {
+    info: async () => ({ id: SERVICE_ID, name: SERVICE_ID }),
     listEnvironments: async () => (await listMaps()).map(id => ({ id })),
     status: async () => getStatus(),
     observe: async () => getObservation()

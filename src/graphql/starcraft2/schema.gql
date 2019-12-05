@@ -1,7 +1,3 @@
-# Scalars
-scalar Date
-scalar JSON
-
 # Boilerplate
 type Info {
   id: ID!
@@ -41,6 +37,7 @@ type Agent {
 }
 
 input ConfigInput {
+  sessionId: ID!
   episodes: Int
   environmentId: ID!
   modeId: ID
@@ -48,6 +45,7 @@ input ConfigInput {
 }
 
 type Config {
+  sessionId: ID!
   episodes: Int!
   environment: Environment!
   mode: Mode!
@@ -82,6 +80,7 @@ type Status {
 }
 
 type AgentStats {
+  score: Float!
   lastReward: [Float!]!
   lastAction: [Float!]!
   totalReward: [Float!]!
@@ -93,17 +92,18 @@ type Observation {
   mode: Mode
   data: [Float!]!
   agentStats: [AgentStats!]!
+  render: String!
   status: Status!
 }
 
 type Query {
+  info: Info!
   listEnvironments: [Environment!]!
-  configuration: Config!
-  status: Status!
-  observe: Observation!
+  status(sessionId: ID!): Status!
+  observe(sessionId: ID!): Observation!
 }
 
 type Mutation {
   run(config: ConfigInput!): Status!
-  stop: Status!
+  stop(sessionId: ID!): Status!
 }
