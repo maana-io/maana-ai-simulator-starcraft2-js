@@ -1,7 +1,6 @@
 // --- External imports
 import validUrl from 'valid-url'
 import gql from 'graphql-tag'
-import { Ability } from '@node-sc2/core/constants'
 
 // --- Internal imports
 import { Codes } from './enums'
@@ -99,61 +98,25 @@ const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
   return engine
 }
 
-const agentSchema = gql`
-  type Ability {
-    id: ID!
-  }
-
-  type Point2D {
-    id: ID!
-    x: Float!
-    y: Float!
-  }
-
-  type ActionRawUnitCommand {
-    id: ID!
-    ability: Ability
-    targetWorldPos: Point2D
-    targetUnitTag: String
-    unitTag: [String!]
-    queueCommand: Boolean
-  }
-
-  input ActionRawUnitCommandInput {
-    abilityId: ID
-    ability: Ability
-    targetWorldPos: Point2D
-    targetUnitTag: String
-    unitTag: [String!]
-    queueCommand: Boolean
-  }
-`
-const sendOnStepMutation = async ({
-  client,
-  state,
-  lastReward,
-  lastAction,
-  step,
-  context
-}) => {
+const sendOnStepMutation = async ({ client, units, step, context }) => {
   try {
     const OnStepMutation = gql`
-      mutation onStep(
-        $state: [Float!]!
-        $lastReward: [Float!]!
-        $lastAction: [Float!]!
-        $step: Int!
-        $context: String
-      ) {
-        onStep(
-          state: $state
-          lastReward: $lastReward
-          lastAction: $lastAction
-          step: $step
-          context: $context
-        ) {
+      mutation onStep($units: [UnitAsInput!]!, $step: Int!, $context: String) {
+        onStep(units: $units, step: $step, context: $context) {
           id
-          action
+          action {
+            id
+            ability {
+              id
+            }
+            unitTag
+            targetWorldPos {
+              x
+              y
+            }
+            targetUnitTag
+            queueCommand
+          }
           context
         }
       }
@@ -161,7 +124,7 @@ const sendOnStepMutation = async ({
 
     const res = await client.mutate({
       mutation: OnStepMutation,
-      variables: { state, lastReward, lastAction, step, context }
+      variables: { units, step, context }
     })
 
     if (res && res.data && res.data.onStep) {
@@ -172,8 +135,6 @@ const sendOnStepMutation = async ({
     setException(e)
   }
 }
-
-const nastyPos = { x: 0, y: 0 }
 
 const newAgent = ({ settings, index }) => {
   let client
@@ -210,14 +171,24 @@ const newAgent = ({ settings, index }) => {
         try {
           // console.log('onStep', agent, resources.get())
           const { units, map, actions, frame, debug } = resources.get()
-          // units
-          //   .getAll()
-          //   .forEach(u =>
-          //     console.log(
-          //       `unit: type=${u.unitType} pos=${JSON.stringify(u.pos)}`
-          //     )
-          //   )
-          const idleCombatUnits = units.getCombatUnits().filter(u => u.noQueue)
+
+          const qUnits = units.getAll().map(u => {
+            let positions = u.pos
+            if (!Array.isArray(positions)) {
+              positions = [positions]
+            }
+            positions = positions.map(p => ({
+              id: `(${p.x},${p.y})`,
+              x: p.x,
+              y: p.y
+            }))
+            return {
+              id: u.tag,
+              type: { id: u.unitType },
+              pos: positions
+            }
+          })
+          // console.log('units', JSON.stringify(qUnits, null, 2))
 
           const state = getSimulationState()
 
@@ -233,47 +204,48 @@ const newAgent = ({ settings, index }) => {
           // ask the agent what action to take
           const res = await sendOnStepMutation({
             client,
-            state: [0.0], // TODO: game state
-            lastReward,
-            lastAction,
+            units: qUnits,
             step: state.step,
             context
           })
-          console.log('on step mutation result', res)
+          // console.log('on step mutation result', res)
           if (res) {
             // store the actions and updated context
-            stats.lastAction = res.action
+            const { action } = res
+            stats.lastAction = action
             agentState.context = res.context
 
             // take action
-            // const units = Array.isArray(u) ? u : [u];
             const queue = false
             const targetPos = units.getByType(317)[0].pos
             const moveTo = {
-              abilityId: Ability.MOVE,
-              unitTags: idleCombatUnits.map(u => u.tag),
+              abilityId: 16,
+              unitTags: [units.getByType(48)[0].tag],
               targetWorldSpacePos: targetPos,
               //     moveTo.targetUnitTag = posOrUnit.tag;
               queueCommand: queue
             }
-            const actionResult = await actions.sendAction(moveTo)
+            // const actionResult = await actions.sendAction(moveTo)
+            const scAction = {
+              abilityId: parseInt(action.ability.id),
+              unitTags: [action.unitTag],
+              targetWorldSpacePos: {
+                x: action.targetWorldPos.x,
+                y: action.targetWorldPos.y
+              },
+              // targetUnitTag: action.targetUnitTag,
+              queueCommand: action.queueCommand
+            }
+            const actionResult = await actions.sendAction(scAction)
             console.log('actionResult', actionResult)
-            // if (posOrUnit.tag) {
-            //     moveTo.targetUnitTag = posOrUnit.tag;
-            // } else if (posOrUnit.x) {
-            //     moveTo.targetWorldSpacePos = posOrUnit;
-            // }
+            // console.log('actionResult', moveTo, scAction, actionResult)
 
-            // return this.sendAction(moveTo)
-            //     .then((res) => {
-            //         if (res.result[0] !== 1) {
-            //             throw new Error(`Could not move unit, result ${res.result[0]}`);
-            //         }
-
-            //         return res;
-            //     });
+            // Success = 1,
+            // NotSupported = 2,
+            // Error = 3,
 
             // determine reward (if any)
+            stats.lastAction = [0.0]
             stats.lastReward = [0.0]
             stats.totalReward = [0.0]
           }
