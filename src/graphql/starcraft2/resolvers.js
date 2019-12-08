@@ -47,8 +47,18 @@ const setSimulationState = ({ state }) => {
   return state
 }
 
-const resetSimulationState = () =>
-  setSimulationState({ state: newSimulationState() })
+const resetSimulationState = () => {
+  const existingState = getSimulationState()
+  const newState = newSimulationState()
+
+  return setSimulationState({
+    state: {
+      ...newState,
+      engine: existingState.engine,
+      connection: existingState.connection
+    }
+  })
+}
 
 // Safely extract last status from state
 const newStatus = () => ({
@@ -199,7 +209,6 @@ const newAgent = ({ settings, index }) => {
 
           const agentState = state.agents[index]
           const { client, stats, context } = agentState
-          const { lastReward, lastAction } = stats
 
           // ask the agent what action to take
           const res = await sendOnStepMutation({
@@ -212,20 +221,10 @@ const newAgent = ({ settings, index }) => {
           if (res) {
             // store the actions and updated context
             const { action } = res
-            stats.lastAction = action
+
             agentState.context = res.context
 
             // take action
-            const queue = false
-            const targetPos = units.getByType(317)[0].pos
-            const moveTo = {
-              abilityId: 16,
-              unitTags: [units.getByType(48)[0].tag],
-              targetWorldSpacePos: targetPos,
-              //     moveTo.targetUnitTag = posOrUnit.tag;
-              queueCommand: queue
-            }
-            // const actionResult = await actions.sendAction(moveTo)
             const scAction = {
               abilityId: parseInt(action.ability.id),
               unitTags: [action.unitTag],
@@ -238,7 +237,6 @@ const newAgent = ({ settings, index }) => {
             }
             const actionResult = await actions.sendAction(scAction)
             console.log('actionResult', actionResult)
-            // console.log('actionResult', moveTo, scAction, actionResult)
 
             // Success = 1,
             // NotSupported = 2,
@@ -330,9 +328,11 @@ const run = async ({ config }) => {
       port: '5000'
     })
 
-    console.log('Connecting...')
-    state.connection = await state.engine.connect()
-    console.log('... connected: ', state.connection)
+    if (!state.connection) {
+      console.log('Connecting...')
+      state.connection = await state.engine.connect()
+      console.log('... connected: ', state.connection)
+    }
 
     console.log('Running game...')
     state.runGame = state.engine.runGame(map, state.players).then(rg => {
