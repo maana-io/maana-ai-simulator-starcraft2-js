@@ -108,19 +108,19 @@ const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
   return engine
 }
 
-const sendOnStepMutation = async ({ client, units, step, context }) => {
+const sendOnStepMutation = async ({ client, units, step, context, supplies, vespene, minerals }) => {
   try {
     const OnStepMutation = gql`
-      mutation onStep($units: [UnitAsInput!]!, $step: Int!, $context: String) {
-        onStep(units: $units, step: $step, context: $context) {
+      mutation onStep($units: [UnitAsInput!]!, $step: Int!, $context: String, $supplies: Int!, $vespene: Int!, $minerals: Int!) {
+        onStep(units: $units, step: $step, context: $context, supplies: $supplies, vespene: $vespene, minerals: $minerals) {
           id
           action {
             id
             ability {
               id
             }
-            unitTag
-            targetWorldPos {
+            unitTags
+            targetWorldSpacePos {
               x
               y
             }
@@ -134,7 +134,7 @@ const sendOnStepMutation = async ({ client, units, step, context }) => {
 
     const res = await client.mutate({
       mutation: OnStepMutation,
-      variables: { units, step, context }
+      variables: { units, step, context, supplies, vespene, minerals }
     })
 
     if (res && res.data && res.data.onStep) {
@@ -192,13 +192,38 @@ const newAgent = ({ settings, index }) => {
               x: p.x,
               y: p.y
             }))
+
+            //console.log( JSON.stringify(u.orders))
+            const orders = u.orders.map(order => {
+              return {
+                id: order.abilityId,
+                targetWorldSpacePos: {
+                  id: `(${order.targetWorldSpacePos.x},${order.targetWorldSpacePos.y})`,
+                  x: order.targetWorldSpacePos.x,
+                  y: order.targetWorldSpacePos.y
+                }
+              }
+          })
+
             return {
               id: u.tag,
               type: { id: u.unitType },
+              orders: orders,
+              health: u.health,
+              maxHealth: u.healthMax,
+              availableAbilities: u._availableAbilities.map(x => {
+                return { id: x }
+              }),
+              alliance: { id: u.alliance },
+              mineralContents: u.mineralContents,
+              vespeneContents: u.vespeneContents,
+              buildProgress: u.buildProgress,
+              assignedHarvesters: u.assignedHarvesters,
+              idealHarvesters: u.idealHarvesters,
               pos: positions
             }
           })
-          // console.log('units', JSON.stringify(qUnits, null, 2))
+          //console.log('units', JSON.stringify(qUnits, null, 2))
 
           const state = getSimulationState()
 
@@ -214,6 +239,9 @@ const newAgent = ({ settings, index }) => {
           const res = await sendOnStepMutation({
             client,
             units: qUnits,
+            supplies: agent.foodCap,
+            minerals: agent.minerals,
+            vespene: agent.vespene,
             step: state.step,
             context
           })
@@ -226,12 +254,12 @@ const newAgent = ({ settings, index }) => {
 
             // take action
             const scAction = {
-              abilityId: parseInt(action.ability.id),
-              unitTags: [action.unitTag],
-              targetWorldSpacePos: {
-                x: action.targetWorldPos.x,
-                y: action.targetWorldPos.y
-              },
+              abilityId: action.ability ? parseInt(action.ability.id) : -1,
+              unitTags: action.unitTags,
+              targetWorldSpacePos: action.targetWorldSpacePos? { 
+                x: action.targetWorldSpacePos.x,
+                y: action.targetWorldSpacePos.y
+              }: {x:-1,y:-1},
               // targetUnitTag: action.targetUnitTag,
               queueCommand: action.queueCommand
             }
