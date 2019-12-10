@@ -108,11 +108,33 @@ const getEngine = ({ host, port } = { host: '127.0.01', port: '5000' }) => {
   return engine
 }
 
-const sendOnStepMutation = async ({ client, units, step, context, supplies, vespene, minerals }) => {
+const sendOnStepMutation = async ({
+  client,
+  units,
+  step,
+  context,
+  supplies,
+  vespene,
+  minerals
+}) => {
   try {
     const OnStepMutation = gql`
-      mutation onStep($units: [UnitAsInput!]!, $step: Int!, $context: String, $supplies: Int!, $vespene: Int!, $minerals: Int!) {
-        onStep(units: $units, step: $step, context: $context, supplies: $supplies, vespene: $vespene, minerals: $minerals) {
+      mutation onStep(
+        $units: [UnitAsInput!]!
+        $step: Int!
+        $context: String
+        $supplies: Int!
+        $vespene: Int!
+        $minerals: Int!
+      ) {
+        onStep(
+          units: $units
+          step: $step
+          context: $context
+          supplies: $supplies
+          vespene: $vespene
+          minerals: $minerals
+        ) {
           id
           action {
             id
@@ -203,7 +225,7 @@ const newAgent = ({ settings, index }) => {
                   y: order.targetWorldSpacePos.y
                 }
               }
-          })
+            })
 
             return {
               id: u.tag,
@@ -256,10 +278,12 @@ const newAgent = ({ settings, index }) => {
             const scAction = {
               abilityId: action.ability ? parseInt(action.ability.id) : -1,
               unitTags: action.unitTags,
-              targetWorldSpacePos: action.targetWorldSpacePos? { 
-                x: action.targetWorldSpacePos.x,
-                y: action.targetWorldSpacePos.y
-              }: {x:-1,y:-1},
+              targetWorldSpacePos: action.targetWorldSpacePos
+                ? {
+                    x: action.targetWorldSpacePos.x,
+                    y: action.targetWorldSpacePos.y
+                  }
+                : { x: -1, y: -1 },
               // targetUnitTag: action.targetUnitTag,
               queueCommand: action.queueCommand
             }
@@ -319,8 +343,8 @@ const run = async ({ config }) => {
     state.config = config
 
     const { environmentId, modeId, agents } = config
-    // const map = environmentId
-    const map = 'mini_games/MoveToBeacon.SC2Map'
+    const map = environmentId
+    // const map = 'mini_games/MoveToBeacon.SC2Map'
 
     // make agent proxies for each of the specified agent settings
     state.agents = agents.map((settings, index) =>
