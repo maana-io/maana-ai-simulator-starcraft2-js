@@ -271,8 +271,8 @@ const newAgent = ({ settings, index }) => {
           if (res) {
             // store the actions and updated context
             const { action } = res
-
             agentState.context = res.context
+            if (action.id !== "NOTHING") {
 
             // take action
             const scAction = {
@@ -288,12 +288,15 @@ const newAgent = ({ settings, index }) => {
               queueCommand: action.queueCommand
             }
             const actionResult = await actions.sendAction(scAction)
-            console.log('actionResult', actionResult)
+            console.log('actionResult', actionResult, 'action',action)
 
+            if (actionResult.result[0] === 3) console.log( JSON.stringify(action))
             // Success = 1,
             // NotSupported = 2,
             // Error = 3,
-
+          } else {
+            console.log('PASS' )
+          }
             // determine reward (if any)
             stats.lastAction = [0.0]
             stats.lastReward = [0.0]
