@@ -5,6 +5,7 @@ import gql from 'graphql-tag'
 // --- Internal imports
 import { Codes } from './enums'
 import createGraphQLClient from '../../createGraphQLClient'
+import { O_RDWR } from 'constants'
 
 require('dotenv').config()
 const {
@@ -204,6 +205,8 @@ const newAgent = ({ settings, index }) => {
           // console.log('onStep', agent, resources.get())
           const { units, map, actions, frame, debug } = resources.get()
 
+          // console.log('units', units.getAll())
+
           const qUnits = units.getAll().map(u => {
             let positions = u.pos
             if (!Array.isArray(positions)) {
@@ -215,22 +218,32 @@ const newAgent = ({ settings, index }) => {
               y: p.y
             }))
 
-            //console.log( JSON.stringify(u.orders))
+            // console.log( JSON.stringify(u.orders))
             const orders = u.orders.map(order => {
               return {
                 id: order.abilityId,
-                targetWorldSpacePos: {
-                  id: `(${order.targetWorldSpacePos.x},${order.targetWorldSpacePos.y})`,
-                  x: order.targetWorldSpacePos.x,
-                  y: order.targetWorldSpacePos.y
-                }
+                targetUnitTag: order.targetWorldSpacePos,
+                targetWorldSpacePos: order.targetWorldSpacePos
+                  ? {
+                      id: `(${order.targetWorldSpacePos.x},${order.targetWorldSpacePos.y})`,
+                      x: order.targetWorldSpacePos.x,
+                      y: order.targetWorldSpacePos.y
+                    }
+                  : null
               }
             })
 
             return {
               id: u.tag,
               type: { id: u.unitType },
-              orders: orders,
+              orders: orders.map(order =>
+                typeof order.targetUnitTag === 'string'
+                  ? order
+                  : {
+                      ...order,
+                      targetUnitTag: JSON.stringify(order.targetUnitTag)
+                    }
+              ),
               health: u.health,
               maxHealth: u.healthMax,
               availableAbilities: u._availableAbilities.map(x => {
@@ -245,7 +258,7 @@ const newAgent = ({ settings, index }) => {
               pos: positions
             }
           })
-          //console.log('units', JSON.stringify(qUnits, null, 2))
+          // console.log('units', JSON.stringify(qUnits, null, 2))
 
           const state = getSimulationState()
 
@@ -272,31 +285,35 @@ const newAgent = ({ settings, index }) => {
             // store the actions and updated context
             const { action } = res
             agentState.context = res.context
-            if (action.id !== "NOTHING") {
+            if (action.id !== 'NOTHING') {
+              // take action
+              const scAction = {
+                abilityId: action.ability ? parseInt(action.ability.id) : -1,
+                unitTags: action.unitTags,
+                targetWorldSpacePos: action.targetWorldSpacePos
+                  ? {
+                      x: action.targetWorldSpacePos.x,
+                      y: action.targetWorldSpacePos.y
+                    }
+                  : { x: -1, y: -1 },
+                targetUnitTag: action.targetUnitTag,
+                queueCommand: action.queueCommand
+              }
+              const actionResult = await actions.sendAction(scAction)
+              // console.log('actionResult', actionResult, 'action', action)
 
-            // take action
-            const scAction = {
-              abilityId: action.ability ? parseInt(action.ability.id) : -1,
-              unitTags: action.unitTags,
-              targetWorldSpacePos: action.targetWorldSpacePos
-                ? {
-                    x: action.targetWorldSpacePos.x,
-                    y: action.targetWorldSpacePos.y
-                  }
-                : { x: -1, y: -1 },
-              // targetUnitTag: action.targetUnitTag,
-              queueCommand: action.queueCommand
+              if (actionResult.result[0] === 3)
+                console.log(JSON.stringify(action))
+              // Success = 1,
+              // NotSupported = 2,
+              // Error = 3,
+            } else {
+              console.log('PASS')
+              // const WORKER_ID = 45
+              // const workers = qUnits.filter(unit => unit.type.id === WORKER_ID)
+              // workers.forEach(w => console.log(`${w.id}`, w.orders))
+              // console.log(JSON.stringify(qUnits, null, 2))
             }
-            const actionResult = await actions.sendAction(scAction)
-            console.log('actionResult', actionResult, 'action',action)
-
-            if (actionResult.result[0] === 3) console.log( JSON.stringify(action))
-            // Success = 1,
-            // NotSupported = 2,
-            // Error = 3,
-          } else {
-            console.log('PASS' )
-          }
             // determine reward (if any)
             stats.lastAction = [0.0]
             stats.lastReward = [0.0]
